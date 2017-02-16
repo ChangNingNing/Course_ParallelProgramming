@@ -1,4 +1,4 @@
-#define N 1024
+#define N 16
 
 __kernel void mul(__global int matrixA[N][N], __global int matrixB[N][N], __global int matrixC[N][N])
 {

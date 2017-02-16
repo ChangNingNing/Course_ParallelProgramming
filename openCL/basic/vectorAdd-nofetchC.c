@@ -87,7 +87,8 @@ int main(int argc, char *argv[]){
 	printf("Kernel excution completes.\n");
 
 	/* get C vector */
-	clFinish(commandQueue);
+	status = clEnqueueReadBuffer(commandQueue, bufferC, CL_TRUE, 0, N*sizeof(cl_uint), C, 0, NULL, NULL);
+	assert(status == CL_SUCCESS);
 
 	for(int i=0; i<N; i++)
 		assert(A[i] + B[i] == C[i]);

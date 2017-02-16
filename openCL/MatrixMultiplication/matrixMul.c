@@ -7,7 +7,7 @@
 
 #define MAXGPU 10
 #define MAXK 1024
-#define N 1024
+#define N 16
 
 cl_uint A[N][N], B[N][N], C[N][N];
 
@@ -94,7 +94,9 @@ int main(int argc, char *argv[]){
 	printf("Specify the shape of the domain completes.\n");
 
 	/* get result */
-	clFinish(commandQueue);
+//	clFinish(commandQueue);
+	status = clEnqueueReadBuffer(commandQueue, bufferC, CL_TRUE, 0, N*N*sizeof(cl_uint), C, 0, NULL, NULL);
+	assert(status == CL_SUCCESS);
 	printf("Kernel excution completes.\n");
 	
 	/* check and free */
@@ -105,6 +107,7 @@ int main(int argc, char *argv[]){
 				sum += A[i][k] * B[k][j];
 			assert(C[i][j] == sum);
 		}
+	printf("Answer correct.\n");
 
 	clReleaseContext(context);
 	clReleaseCommandQueue(commandQueue);
