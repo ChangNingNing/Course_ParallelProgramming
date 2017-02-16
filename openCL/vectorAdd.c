@@ -76,7 +76,7 @@ int main(int argc, char *argv[]){
 	assert(status == CL_SUCCESS);
 	status = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&bufferB);
 	assert(status == CL_SUCCESS);
-	status = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&bufferB);
+	status = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&bufferC);
 	assert(status == CL_SUCCESS);
 	printf("Set kernel arguments completes\n");
 
@@ -85,5 +85,23 @@ int main(int argc, char *argv[]){
 	status = clEnqueueNDRangeKernel(commandQueue, kernel, 1, NULL, globalThreads, localThreads, 0, NULL, NULL);
 	assert(status == CL_SUCCESS);
 	printf("Specify the shape of the domain completes.\n");
+
+	status = clEnqueueReadBuffer(commandQueue, bufferC, CL_TRUE, 0, N*sizeof(cl_uint), C, 0, NULL, NULL);
+	assert(status == CL_SUCCESS);
+	printf("Kernel excution completes.\n");
+
+	for(int i=0; i<N; i++)
+		assert(A[i] + B[i] == C[i]);
+	
+	free(A);
+	free(B);
+	free(C);
+	clReleaseContext(context);
+	clReleaseCommandQueue(commandQueue);
+	clReleaseProgram(program);
+	clReleaseKernel(kernel);
+	clReleaseMemObject(bufferA);
+	clReleaseMemObject(bufferB);
+	clReleaseMemObject(bufferC);
 	return 0;
 }
