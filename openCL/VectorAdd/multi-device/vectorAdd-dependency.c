@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <time.h>
 #include <CL/cl.h>
 
 #define N (1<<25)
@@ -66,14 +67,19 @@ int main(int argc, char *argv[]){
 	printf("Build Program Completes\n");
 
 	/* create kernel */
-	cl_kernel kernel = clCreateKernel(program, "add", &status);
-	assert(status == CL_SUCCESS);
+	cl_kernel kernel[DEVICENUM];
+	for (int i = 0; i < DEVICENUM; i++) {
+		kernel[i] = clCreateKernel(program, "add", &status);
+		assert(status == CL_SUCCESS);
+	}
 	printf("Build kernel completes\n");
 
 	/* vectors */
+	srand(time(NULL));
 	for(int i=0; i<N; i++){
-		A[i] = D[i] = i;
-		B[i] = E[i] = N - i;
+		A[i] = D[i] = rand()%100;
+		B[i] = E[i] = rand()%100;
+		G[i] = 0;
 	}
 
 	/* create buffer1 */
@@ -108,53 +114,81 @@ int main(int argc, char *argv[]){
 	size_t globalThreads[] = {(size_t)N};
 	size_t localThreads[] = {256};
 
-	/* ABC */
 	cl_event events[3];
-	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&bufferA);
-	assert(status == CL_SUCCESS);
-	status = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&bufferB);
-	assert(status == CL_SUCCESS);
-	status = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&bufferC);
-	assert(status == CL_SUCCESS);
-	status = clEnqueueNDRangeKernel(commandQueue[0], kernel, 1, NULL,
-				globalThreads, localThreads, 0, NULL, &events[0]);
-	assert(status == CL_SUCCESS);
 
-	/* DEF */
-	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&bufferD);
-	assert(status == CL_SUCCESS);
-	status = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&bufferE);
-	assert(status == CL_SUCCESS);
-	status = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&bufferF);
-	assert(status == CL_SUCCESS);
-	status = clEnqueueNDRangeKernel(commandQueue[1], kernel, 1, NULL,
-				globalThreads, localThreads, 0, NULL, &events[1]);
-	assert(status == CL_SUCCESS);
+#pragma omp parallel
+{
+    #pragma omp single
+{
+    /* ABC */
+    #pragma omp task
+    {
+    status = clSetKernelArg(kernel[0], 0, sizeof(cl_mem), (void *)&bufferA);
+    assert(status == CL_SUCCESS);
+    status = clSetKernelArg(kernel[0], 1, sizeof(cl_mem), (void *)&bufferB);
+    assert(status == CL_SUCCESS);
+    status = clSetKernelArg(kernel[0], 2, sizeof(cl_mem), (void *)&bufferC);
+    assert(status == CL_SUCCESS);
+    }
+    #pragma omp task
+    /* DEF */
+    {
+    status = clSetKernelArg(kernel[1], 0, sizeof(cl_mem), (void *)&bufferD);
+    assert(status == CL_SUCCESS);
+    status = clSetKernelArg(kernel[1], 1, sizeof(cl_mem), (void *)&bufferE);
+    assert(status == CL_SUCCESS);
+    status = clSetKernelArg(kernel[1], 2, sizeof(cl_mem), (void *)&bufferF);
+    assert(status == CL_SUCCESS);
+    }
+    /* CFG */
+    #pragma omp task
+    {
+    status = clSetKernelArg(kernel[2], 0, sizeof(cl_mem), (void *)&bufferC);
+    assert(status == CL_SUCCESS);
+    status = clSetKernelArg(kernel[2], 1, sizeof(cl_mem), (void *)&bufferF);
+    assert(status == CL_SUCCESS);
+    status = clSetKernelArg(kernel[2], 2, sizeof(cl_mem), (void *)&bufferG);
+    assert(status == CL_SUCCESS);
+    }
+    #pragma omp taskwait
+	printf("Set Argument Complete\n");
+	#pragma omp task
+    {
+    status = clEnqueueNDRangeKernel(commandQueue[0], kernel[0], 1, NULL,
+                globalThreads, localThreads, 0, NULL, &events[0]);
+    assert(status == CL_SUCCESS);
+    }
 
-	/* CFG */
-	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&bufferC);
-	assert(status == CL_SUCCESS);
-	status = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&bufferF);
-	assert(status == CL_SUCCESS);
-	status = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&bufferG);
-	assert(status == CL_SUCCESS);
-	status = clEnqueueNDRangeKernel(commandQueue[2], kernel, 1, NULL,
-				globalThreads, localThreads, 2, events, &events[2]);
-	assert(status == CL_SUCCESS);
-	
+    printf("Enqueue End\n");
+	#pragma omp task
+    {
+    status = clEnqueueNDRangeKernel(commandQueue[1], kernel[1], 1, NULL,
+                globalThreads, localThreads, 0, NULL, &events[1]);
+    assert(status == CL_SUCCESS);
+    }
+	#pragma omp task
+    {
+    status = clEnqueueNDRangeKernel(commandQueue[2], kernel[2], 1, NULL,
+                globalThreads, localThreads, 0, NULL, &events[2]);
+    assert(status == CL_SUCCESS);
+    }
+	#pragma omp taskwait
+}
+}
+
+
 	/* wait for events */
-	status = clWaitForEvents(1, &events[2]);
+	status = clWaitForEvents(DEVICENUM, events);
 	assert(status == CL_SUCCESS);
 	printf("All three kernels complete/\n");
 
 	/* get result */
-	status = clEnqueueReadBuffer(commandQueue[2], bufferG, CL_TRUE,
-					0, N*sizeof(cl_uint), G, 0, NULL, NULL);
+	status = clEnqueueReadBuffer(commandQueue[2], bufferG, CL_TRUE, 0, N*sizeof(cl_uint), G, 0, NULL, NULL);
+	assert(status == CL_SUCCESS);
 
 	/* get base */
 	cl_long base;
-	status = clGetEventProfilingInfo(events[0], CL_PROFILING_COMMAND_QUEUED,
-					sizeof(cl_ulong), &base, NULL);
+	status = clGetEventProfilingInfo(events[0], CL_PROFILING_COMMAND_QUEUED, sizeof(cl_ulong), &base, NULL);
 	assert(status == CL_SUCCESS);
 
 	/* get time */
@@ -186,14 +220,15 @@ int main(int argc, char *argv[]){
 
 	/* Check and Free */
 	for(int i=0; i<N; i++)
-		assert(G[i] == A[i]+B[i]+D[i]+E[i]);
+		assert(G[i] == A[i] + B[i] + D[i] + E[i] + 4095*3);
 	printf("Answer correct\n");
 
 	clReleaseContext(context);
 	for(int d=0; d<DEVICENUM; d++)
 		clReleaseCommandQueue(commandQueue[d]);
 	clReleaseProgram(program);
-	clReleaseKernel(kernel);
+	for (int d = 0; d < DEVICENUM; d++)
+		clReleaseKernel(kernel[d]);
 	clReleaseMemObject(bufferA);
 	clReleaseMemObject(bufferB);
 	clReleaseMemObject(bufferC);

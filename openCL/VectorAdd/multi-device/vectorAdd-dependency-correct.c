@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <time.h>
 #include <CL/cl.h>
 
 #define N (1<<25)
@@ -71,9 +72,11 @@ int main(int argc, char *argv[]){
 	printf("Build kernel completes\n");
 
 	/* vectors */
+	srand(time(NULL));
 	for(int i=0; i<N; i++){
-		A[i] = D[i] = i;
-		B[i] = E[i] = N - i;
+		A[i] = D[i] = rand()%100;
+		B[i] = E[i] = rand()%100;
+		G[i] = 0;
 	}
 
 	/* create buffer1 */
@@ -139,21 +142,22 @@ int main(int argc, char *argv[]){
 	status = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&bufferG);
 	assert(status == CL_SUCCESS);
 	status = clEnqueueNDRangeKernel(commandQueue[2], kernel, 1, NULL,
-				globalThreads, localThreads, 0, NULL, &events[2]);
+				globalThreads, localThreads, 2, events, &events[2]);
 	assert(status == CL_SUCCESS);
 	
 	/* wait for events */
-	status = clWaitForEvents(DEVICENUM, events);
+	status = clWaitForEvents(1, &events[2]);
 	assert(status == CL_SUCCESS);
 	printf("All three kernels complete/\n");
 
 	/* get result */
-	status = clEnqueueReadBuffer(commandQueue[2], bufferG, CL_TRUE, 0, N*sizeof(cl_uint), G, 0, NULL, NULL);
-	assert(status == CL_SUCCESS);
+	status = clEnqueueReadBuffer(commandQueue[2], bufferG, CL_TRUE,
+					0, N*sizeof(cl_uint), G, 0, NULL, NULL);
 
 	/* get base */
 	cl_long base;
-	status = clGetEventProfilingInfo(events[0], CL_PROFILING_COMMAND_QUEUED, sizeof(cl_ulong), &base, NULL);
+	status = clGetEventProfilingInfo(events[0], CL_PROFILING_COMMAND_QUEUED,
+					sizeof(cl_ulong), &base, NULL);
 	assert(status == CL_SUCCESS);
 
 	/* get time */
@@ -185,7 +189,7 @@ int main(int argc, char *argv[]){
 
 	/* Check and Free */
 	for(int i=0; i<N; i++)
-		assert(G[i] == A[i] + B[i] + D[i] + E[i]);
+		assert(G[i] == A[i]+B[i]+D[i]+E[i]+4095*3);
 	printf("Answer correct\n");
 
 	clReleaseContext(context);
